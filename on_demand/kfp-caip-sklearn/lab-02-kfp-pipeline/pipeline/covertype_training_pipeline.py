@@ -15,6 +15,7 @@
 
 import os
 
+from helper_components import get_previous_run_metric
 from helper_components import evaluate_model
 from helper_components import retrieve_best_run
 from jinja2 import Template
@@ -34,10 +35,13 @@ RUNTIME_VERSION = os.getenv('RUNTIME_VERSION')
 PYTHON_VERSION = os.getenv('PYTHON_VERSION')
 COMPONENT_URL_SEARCH_PREFIX = os.getenv('COMPONENT_URL_SEARCH_PREFIX')
 USE_KFP_SA = os.getenv('USE_KFP_SA')
+ENDPOINT = os.getenv('ENDPOINT')
 
 TRAINING_FILE_PATH = 'datasets/training/data.csv'
 VALIDATION_FILE_PATH = 'datasets/validation/data.csv'
 TESTING_FILE_PATH = 'datasets/testing/data.csv'
+
+
 
 # Parameter defaults
 SPLITS_DATASET_ID = 'splits'
@@ -95,6 +99,7 @@ mlengine_deploy_op = component_store.load_component('ml_engine/deploy')
 retrieve_best_run_op = func_to_container_op(
     retrieve_best_run, base_image=BASE_IMAGE)
 evaluate_model_op = func_to_container_op(evaluate_model, base_image=BASE_IMAGE)
+evaluation_metric_previous_run_op = func_to_container_op(get_previous_run_metric, base_image=BASE_IMAGE)
 
 
 @kfp.dsl.pipeline(
@@ -107,13 +112,16 @@ def covertype_train(project_id,
                     gcs_root,
                     dataset_id,
                     evaluation_metric_name,
-                    evaluation_metric_threshold,
                     model_id,
                     version_id,
                     replace_existing_version,
+                    experiment_id,                    
                     hypertune_settings=HYPERTUNE_SETTINGS,
                     dataset_location='US'):
     """Orchestrates training and deployment of an sklearn model."""
+    
+    #get metric-accuracy from previous run in the experiment
+    evaluation_metric_previous_run=evaluation_metric_previous_run_op(ENDPOINT, experiment_id)
 
     # Create the training split
     query = generate_sampling_query(
@@ -206,7 +214,7 @@ def covertype_train(project_id,
         metric_name=evaluation_metric_name)
 
     # Deploy the model if the primary metric is better than threshold
-    with kfp.dsl.Condition(eval_model.outputs['metric_value'] > evaluation_metric_threshold):
+    with kfp.dsl.Condition(eval_model.outputs['metric_value'] > evaluation_metric_previous_run.outputs['accuracy']):
         deploy_model = mlengine_deploy_op(
         model_uri=train_model.outputs['job_dir'],
         project_id=project_id,
