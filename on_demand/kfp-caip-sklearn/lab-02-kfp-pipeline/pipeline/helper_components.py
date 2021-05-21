@@ -12,8 +12,25 @@
 # See the License for the specific language governing permissions and
 """Helper components."""
 
+
 from typing import NamedTuple
 
+def get_previous_run_metric( ENDPOINT: str, experiment_id: str ) -> NamedTuple('Outputs', [('run_id', str), ('accuracy', float)]):
+
+    import kfp as kfp
+    runs_details= kfp.Client(host=ENDPOINT).list_runs(experiment_id=experiment_id, sort_by='created_at desc').to_dict()
+    print(runs_details)
+    latest_success_run_details=''
+    print("runs_details['runs'] type {}".format(type(runs_details['runs'])))
+    for i in runs_details['runs']:
+        print("i['status'] type {}".format(type(i['status'])))
+        if i['status'] == 'Succeeded':
+            run_id=i['id']
+            accuracy=i['metrics'][0]['number_value']
+            break;
+    print("accuracy={}".format(accuracy))
+    print(type(run_id))
+    return (run_id, accuracy)
 
 def retrieve_best_run(
     project_id: str, job_id: str
