@@ -1,0 +1,165 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: covertype-classifier-training-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.0.0, pipelines.kubeflow.org/pipeline_compilation_time: '2021-05-20T15:22:17.572859',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "The pipeline training
+      and deploying the Covertype classifierpipeline_yaml", "inputs": [{"name": "project_id"},
+      {"name": "region"}, {"name": "source_table_name"}, {"name": "gcs_root"}, {"name":
+      "dataset_id"}, {"name": "evaluation_metric_name"}, {"name": "model_id"}, {"name":
+      "version_id"}, {"name": "replace_existing_version"}, {"name": "experiment_id"},
+      {"default": "\n{\n    \"hyperparameters\":  {\n        \"goal\": \"MAXIMIZE\",\n        \"maxTrials\":
+      6,\n        \"maxParallelTrials\": 3,\n        \"hyperparameterMetricTag\":
+      \"accuracy\",\n        \"enableTrialEarlyStopping\": True,\n        \"params\":
+      [\n            {\n                \"parameterName\": \"max_iter\",\n                \"type\":
+      \"DISCRETE\",\n                \"discreteValues\": [500, 1000]\n            },\n            {\n                \"parameterName\":
+      \"alpha\",\n                \"type\": \"DOUBLE\",\n                \"minValue\":
+      0.0001,\n                \"maxValue\": 0.001,\n                \"scaleType\":
+      \"UNIT_LINEAR_SCALE\"\n            }\n        ]\n    }\n}\n", "name": "hypertune_settings",
+      "optional": true}, {"default": "US", "name": "dataset_location", "optional":
+      true}], "name": "Covertype Classifier Training"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.0.0}
+spec:
+  entrypoint: covertype-classifier-training
+  templates:
+  - name: covertype-classifier-training
+    inputs:
+      parameters:
+      - {name: experiment_id}
+    dag:
+      tasks:
+      - name: get-previous-run-metric
+        template: get-previous-run-metric
+        arguments:
+          parameters:
+          - {name: experiment_id, value: '{{inputs.parameters.experiment_id}}'}
+  - name: get-previous-run-metric
+    container:
+      args: [--ENDPOINT, 'https://627be4a1d4049ed3-dot-us-central1.pipelines.googleusercontent.com',
+        --experiment-id, '{{inputs.parameters.experiment_id}}', '----output-paths',
+        /tmp/outputs/accuracy/data]
+      command:
+      - python3
+      - -u
+      - -c
+      - |
+        def get_previous_run_metric( ENDPOINT, experiment_id ):
+
+            import kfp as kfp
+            runs_details= kfp.Client(host=ENDPOINT).list_runs(experiment_id=experiment_id, sort_by='created_at desc').to_dict()
+            latest_success_run_details=''
+            print("runs_details['runs'] type {}".format(type(runs_details['runs'])))
+            for i in runs_details['runs']:
+                print("i['status'] type {}".format(type(i['status'])))
+                if i['status'] == 'Succeeded':
+                    latest_success_run_details=i
+                    break;
+            run_id=latest_success_run_details['id']
+            run_id_details=kfp.Client(host=ENDPOINT).get_run(run_id=run_id).to_dict()
+            print(run_id_details)
+            accuracy=run_id_details['run']['metrics'][0]['number_value']
+
+            return (accuracy)
+
+        def _serialize_float(float_value: float) -> str:
+            if isinstance(float_value, str):
+                return float_value
+            if not isinstance(float_value, (float, int)):
+                raise TypeError('Value "{}" has type "{}" instead of float.'.format(str(float_value), str(type(float_value))))
+            return str(float_value)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Get previous run metric', description='')
+        _parser.add_argument("--ENDPOINT", dest="ENDPOINT", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--experiment-id", dest="experiment_id", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
+        _parsed_args = vars(_parser.parse_args())
+        _output_files = _parsed_args.pop("_output_paths", [])
+
+        _outputs = get_previous_run_metric(**_parsed_args)
+
+        _output_serializers = [
+            _serialize_float,
+
+        ]
+
+        import os
+        for idx, output_file in enumerate(_output_files):
+            try:
+                os.makedirs(os.path.dirname(output_file))
+            except OSError:
+                pass
+            with open(output_file, 'w') as f:
+                f.write(_output_serializers[idx](_outputs[idx]))
+      image: gcr.io/dna-gcp-data/base_image:test
+    inputs:
+      parameters:
+      - {name: experiment_id}
+    outputs:
+      artifacts:
+      - {name: get-previous-run-metric-accuracy, path: /tmp/outputs/accuracy/data}
+    metadata:
+      annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
+          {"args": ["--ENDPOINT", {"inputValue": "ENDPOINT"}, "--experiment-id", {"inputValue":
+          "experiment_id"}, "----output-paths", {"outputPath": "accuracy"}], "command":
+          ["python3", "-u", "-c", "def get_previous_run_metric( ENDPOINT, experiment_id
+          ):\n\n    import kfp as kfp\n    runs_details= kfp.Client(host=ENDPOINT).list_runs(experiment_id=experiment_id,
+          sort_by=''created_at desc'').to_dict()\n    latest_success_run_details=''''\n    print(\"runs_details[''runs'']
+          type {}\".format(type(runs_details[''runs''])))\n    for i in runs_details[''runs'']:\n        print(\"i[''status'']
+          type {}\".format(type(i[''status''])))\n        if i[''status''] == ''Succeeded'':\n            latest_success_run_details=i\n            break;\n    run_id=latest_success_run_details[''id'']\n    run_id_details=kfp.Client(host=ENDPOINT).get_run(run_id=run_id).to_dict()\n    print(run_id_details)\n    accuracy=run_id_details[''run''][''metrics''][0][''number_value'']\n\n    return
+          (accuracy)\n\ndef _serialize_float(float_value: float) -> str:\n    if isinstance(float_value,
+          str):\n        return float_value\n    if not isinstance(float_value, (float,
+          int)):\n        raise TypeError(''Value \"{}\" has type \"{}\" instead of
+          float.''.format(str(float_value), str(type(float_value))))\n    return str(float_value)\n\nimport
+          argparse\n_parser = argparse.ArgumentParser(prog=''Get previous run metric'',
+          description='''')\n_parser.add_argument(\"--ENDPOINT\", dest=\"ENDPOINT\",
+          type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--experiment-id\",
+          dest=\"experiment_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\",
+          dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files
+          = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = get_previous_run_metric(**_parsed_args)\n\n_output_serializers
+          = [\n    _serialize_float,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except
+          OSError:\n        pass\n    with open(output_file, ''w'') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"],
+          "image": "gcr.io/dna-gcp-data/base_image:test"}}, "inputs": [{"name": "ENDPOINT",
+          "type": "String"}, {"name": "experiment_id", "type": "String"}], "name":
+          "Get previous run metric", "outputs": [{"name": "accuracy", "type": "Float"}]}',
+        pipelines.kubeflow.org/component_ref: '{}'}
+  arguments:
+    parameters:
+    - {name: project_id}
+    - {name: region}
+    - {name: source_table_name}
+    - {name: gcs_root}
+    - {name: dataset_id}
+    - {name: evaluation_metric_name}
+    - {name: model_id}
+    - {name: version_id}
+    - {name: replace_existing_version}
+    - {name: experiment_id}
+    - name: hypertune_settings
+      value: |2
+
+        {
+            "hyperparameters":  {
+                "goal": "MAXIMIZE",
+                "maxTrials": 6,
+                "maxParallelTrials": 3,
+                "hyperparameterMetricTag": "accuracy",
+                "enableTrialEarlyStopping": True,
+                "params": [
+                    {
+                        "parameterName": "max_iter",
+                        "type": "DISCRETE",
+                        "discreteValues": [500, 1000]
+                    },
+                    {
+                        "parameterName": "alpha",
+                        "type": "DOUBLE",
+                        "minValue": 0.0001,
+                        "maxValue": 0.001,
+                        "scaleType": "UNIT_LINEAR_SCALE"
+                    }
+                ]
+            }
+        }
+    - {name: dataset_location, value: US}
+  serviceAccountName: pipeline-runner
